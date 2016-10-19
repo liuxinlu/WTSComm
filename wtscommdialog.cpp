@@ -35,6 +35,7 @@ WTSCommDialog::WTSCommDialog(QWidget *parent) :
     ui->label_ReaderStatus->setPixmap(fitpixmap);
     ui->label_ReaderStatus->show();
     InitSystemParm();
+    connect(ui->comboBox_ReaderID,SIGNAL(currentIndexChanged(int)),this,SLOT(on_comboBox_ReaderID_currentIndexChanged(int)));
 }
 
 WTSCommDialog::~WTSCommDialog()
@@ -99,8 +100,6 @@ void WTSCommDialog::InitSystemParm()
     SetReaderIDCheckStatusFlag=false;//true is checking,false is check over
 
     singleShotFlag=true;//true is can be start ,false is stop timer
-
-    StatusForRecv=1;
 
     ui->lineEdit_ParmFileName->setText("Config"+QDateTime::currentDateTime().toString("yyyy-MM-dd"));
 
@@ -565,92 +564,70 @@ bool WTSCommDialog::LRC_Check(unsigned char RecLRCHigh,unsigned char RecLRCLow,u
 
 void WTSCommDialog::WTS_ReadUart()
 {
-    int len;
     QString cmd;
     QString temper,power,frequence;
 
-
-    if(WTS_SerialPort->bytesAvailable()<0)
+    BufferData = WTS_SerialPort->readAll();
+    //异常类：无头且变量为空，已丢失头部，数据不可靠，直接返回
+    if ((!BufferData.contains(":"))&(PasteData.isNull()))
     {
-        // serialPortAssitant.ReciveWidget->setText("No data");
         return;
     }
-    receiveMsg+=WTS_SerialPort->readAll();
-    qDebug()<<receiveMsg;
-
-    //接收到的字节数以初始的bytes为依据
-    len=receiveMsg.count();
-    //WTS_SerialPortAssitant.status->RxByte->setText(QString::number(reciveCount));
-
-    //unsigned char*  CharCmd;
-    QByteArray ba = receiveMsg.toLatin1();
-    rxdata=(unsigned char*)ba.data();
-
-
-    switch (StatusForRecv)
+    //第一种：有头无尾，先清空原有内容，再附加
+    if ((BufferData.contains(":"))&(!BufferData.contains("\n")))
     {
-    case 1:
-        if (rxdata[0]==':')
-        {
-            ReceiveDataCount+=len;
-            if (ReceiveDataCount<15||(ReceiveDataCount>=15&&rxdata[13]!='\r'&&rxdata[14]!='\n')||(ReceiveDataCount>=45&&rxdata[43]!='\r'&&rxdata[44]!='\n'))
-            {
-                StatusForRecv=2;
-                DebugStopFlagStatus=1;
-            }
-        }
-        break;
-    case 2:
-        ReceiveDataCount+=len;
-        if (ReceiveDataCount>50)
-        {
-            ReceiveDataCount=0;
-            StatusForRecv=1;
-            DebugStopFlagStatus=1;
-        }
-        break;
-    default:
-        break;
+        PasteData.clear();
+        PasteData.append(BufferData);
     }
+    //第二种：无头无尾且变量已有内容，数据中段部分，继续附加即可
+    if ((!BufferData.contains(":"))&(!BufferData.contains("\n"))&(!PasteData.isNull()))
+    {
+        PasteData.append(BufferData);
+    }
+    //第三种：无头有尾且变量已有内容，已完整读取，附加后输出数据，并清空变量
+    if ((!BufferData.contains(":"))&(BufferData.contains("\n"))&(!PasteData.isNull()))
+    {
+        PasteData.append(BufferData);
+        ReadData = PasteData;
+        PasteData.clear();
 
-    if (ReceiveDataCount>=15&&rxdata[13]=='\r'&&rxdata[14]=='\n')//15字节数据包
-    {
-        unsigned char data[10]={0};
-        for (int i=0;i<10;i++)
+        //接收到的字节数以初始的bytes为依据
+        ReceiveDataCount=ReadData.size();
+        rxdata=(unsigned char*)ReadData.data();
+        if (ReceiveDataCount==15)//15字节数据包
         {
-            data[i]=rxdata[i+1];
-        }
-        if (LRC_Check(rxdata[11],rxdata[12],LRC_Calculate(data,10)))
-        {
-            iRecvPackageCount++;
-            ui->label_RecvPackage->setText("接收包："+QString::number(iRecvPackageCount,10));
-            if (rxdata[3]=='4'&&rxdata[4]=='4')//收到传感器使能ACK
+            unsigned char data[10]={0};
+            for (int i=0;i<10;i++)
             {
-//                m_MSComm.SetOutput(COleVariant(LastSendCmd));
-//                LastSendCmd.FreeExtra();
-//                LastSendCmd.Empty();
-//                m_MSComm.SetInBufferCount(0);
-            }else if (rxdata[3]=='6'&&rxdata[4]=='6')//收到读取器状态信息包
-            {
-                ShowReaderStatus(rxdata[5]);
+                data[i]=rxdata[i+1];
             }
-        }
-        else
-        {
-            cmd+=rxdata[1];
-            cmd+=rxdata[2];
-            cmd=cmd+"44444444";
-            cmd=":"+cmd+(LRC_Calculate(cmd)).left(2)+"\r\n";
-            WTS_SerialPort->write(cmd.toLatin1());
-            iSendPackageCount++;
-            ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-        }
-        StatusForRecv=1;
-        ReceiveDataCount=0;
-        receiveMsg.clear();
-    }else if (ReceiveDataCount>=45)//45字节数据包
-    {
-        if(rxdata[43]=='\r'&&rxdata[44]=='\n')
+            if (LRC_Check(rxdata[11],rxdata[12],LRC_Calculate(data,10)))
+            {
+                iRecvPackageCount++;
+                ui->label_RecvPackage->setText("接收包："+QString::number(iRecvPackageCount,10));
+                if (rxdata[3]=='4'&&rxdata[4]=='4')//收到传感器使能ACK
+                {
+    //                m_MSComm.SetOutput(COleVariant(LastSendCmd));
+    //                LastSendCmd.FreeExtra();
+    //                LastSendCmd.Empty();
+    //                m_MSComm.SetInBufferCount(0);
+                }else if (rxdata[3]=='6'&&rxdata[4]=='6')//收到读取器状态信息包
+                {
+                    ShowReaderStatus(rxdata[5]);
+                }
+            }
+            else
+            {
+                cmd+=rxdata[1];
+                cmd+=rxdata[2];
+                cmd=cmd+"44444444";
+                cmd=":"+cmd+(LRC_Calculate(cmd)).left(2)+"\r\n";
+                WTS_SerialPort->write(cmd.toLatin1());
+                iSendPackageCount++;
+                ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
+            }
+            ReceiveDataCount=0;
+        }else if (ReceiveDataCount==45)//45字节数据包
         {
             unsigned char data[40]={0};
             for (int i=0;i<40;i++)
@@ -678,7 +655,6 @@ void WTSCommDialog::WTS_ReadUart()
                 }else if (rxdata[3]=='0'&&rxdata[4]=='1')//收到调试校准数据包
                 {
                     bool ok;
-                    DebugStopFlagStatus=2;
                     if(rxdata[11]=='.')
                     {
                         //收功率数据，并转换
@@ -731,7 +707,6 @@ void WTSCommDialog::WTS_ReadUart()
                         power.clear(); //清空内容
                     }//if(bt=='a'&&rxdata[9]=='b')
                     ReceiveDataCount=0;
-                    receiveMsg.clear();
                 }
             }
             else
@@ -745,9 +720,15 @@ void WTSCommDialog::WTS_ReadUart()
                 ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
             }
         }
-        StatusForRecv=1;
-        ReceiveDataCount=0;
-        receiveMsg.clear();
+        qDebug()<<ReadData;
+    }
+    //第四种：有头有尾（一段完整的内容），先清空原有内容，再附加，然后输出，最后清空变量
+    if ((BufferData.contains(":"))&(BufferData.contains("\n")))
+    {
+        PasteData.clear();
+        PasteData.append(BufferData);
+        ReadData = PasteData;
+        PasteData.clear();
     }
 }
 
@@ -2072,7 +2053,6 @@ void WTSCommDialog::on_pushButton_StartGetTemp_clicked()
     if(FlagForGetTempButton)
     {
         FlagForGetTempButton=false;
-        DebugStopFlagStatus=0;
         for (int i = 0; i < 4; i++)
         {
             for (int j = 0; j < 12; j++)
@@ -3418,13 +3398,13 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
             WTS_SerialPort->write(cmd1.toLatin1());
             iSendPackageCount++;
             ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-            sleep(100);
+            sleep(150);
             QString cmd2=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(6,6);
             cmd2=":"+cmd2+LRC_Calculate(cmd2).left(2)+"\r\n";
             WTS_SerialPort->write(cmd2.toLatin1());
             iSendPackageCount++;
             ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-            sleep(100);
+            sleep(150);
             QString cmd3=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(12,4)+"<>";
             cmd3=":"+cmd3+LRC_Calculate(cmd3).left(2)+"\r\n";
             WTS_SerialPort->write(cmd3.toLatin1());
@@ -3453,19 +3433,19 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
                         WTS_SerialPort->write(cmd1.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(100);
+                        sleep(150);
                         QString cmd2=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(6,6);
                         cmd2=":"+cmd2+LRC_Calculate(cmd2).left(2)+"\r\n";
                         WTS_SerialPort->write(cmd2.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(100);
+                        sleep(150);
                         QString cmd3=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(12,4)+"<>";
                         cmd3=":"+cmd3+LRC_Calculate(cmd3).left(2)+"\r\n";
                         WTS_SerialPort->write(cmd3.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(100);
+                        sleep(150);
                     }
                 }
             }
@@ -3744,4 +3724,175 @@ bool WTSCommDialog::ReadParmFromFile(QString FileName)
         ui->comboBox_Ant4Sensor12RF->setCurrentIndex(iRFSetData[3][11]);
     }
     return true;
+}
+
+void WTSCommDialog::on_pushButton_ClearAll_clicked()
+{
+    InitMainDlgItem();
+    iSendPackageCount=0;
+    ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
+    iRecvPackageCount=0;
+    ui->label_RecvPackage->setText("发送包："+QString::number(iRecvPackageCount,10));
+}
+
+void WTSCommDialog::on_comboBox_ReaderID_currentIndexChanged(int index)
+{
+    InitMainDlgItem();
+    iSendPackageCount=0;
+    ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
+    iRecvPackageCount=0;
+    ui->label_RecvPackage->setText("发送包："+QString::number(iRecvPackageCount,10));
+    for(int i=0;i<4;i++)
+    {
+        for(int j=0;j<12;j++)
+        {
+            iSensorSet[i][j]=0;
+            iRFReadData[i][j]=0;
+            iRFSetData[i][j]=0;
+        }
+    }
+    ui->checkBox_Ant1Sensor01Set->setChecked(false);
+    ui->checkBox_Ant1Sensor02Set->setChecked(false);
+    ui->checkBox_Ant1Sensor03Set->setChecked(false);
+    ui->checkBox_Ant1Sensor04Set->setChecked(false);
+    ui->checkBox_Ant1Sensor05Set->setChecked(false);
+    ui->checkBox_Ant1Sensor06Set->setChecked(false);
+    ui->checkBox_Ant1Sensor07Set->setChecked(false);
+    ui->checkBox_Ant1Sensor08Set->setChecked(false);
+    ui->checkBox_Ant1Sensor09Set->setChecked(false);
+    ui->checkBox_Ant1Sensor10Set->setChecked(false);
+    ui->checkBox_Ant1Sensor11Set->setChecked(false);
+    ui->checkBox_Ant1Sensor12Set->setChecked(false);
+    ui->comboBox_Ant1Sensor01RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor02RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor03RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor04RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor05RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor06RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor07RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor08RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor09RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor10RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor11RF->setCurrentIndex(0);
+    ui->comboBox_Ant1Sensor12RF->setCurrentIndex(0);
+    ui->checkBox_Ant2Sensor01Set->setChecked(false);
+    ui->checkBox_Ant2Sensor02Set->setChecked(false);
+    ui->checkBox_Ant2Sensor03Set->setChecked(false);
+    ui->checkBox_Ant2Sensor04Set->setChecked(false);
+    ui->checkBox_Ant2Sensor05Set->setChecked(false);
+    ui->checkBox_Ant2Sensor06Set->setChecked(false);
+    ui->checkBox_Ant2Sensor07Set->setChecked(false);
+    ui->checkBox_Ant2Sensor08Set->setChecked(false);
+    ui->checkBox_Ant2Sensor09Set->setChecked(false);
+    ui->checkBox_Ant2Sensor10Set->setChecked(false);
+    ui->checkBox_Ant2Sensor11Set->setChecked(false);
+    ui->checkBox_Ant2Sensor12Set->setChecked(false);
+    ui->comboBox_Ant2Sensor01RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor02RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor03RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor04RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor05RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor06RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor07RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor08RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor09RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor10RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor11RF->setCurrentIndex(0);
+    ui->comboBox_Ant2Sensor12RF->setCurrentIndex(0);
+    ui->checkBox_Ant3Sensor01Set->setChecked(false);
+    ui->checkBox_Ant3Sensor02Set->setChecked(false);
+    ui->checkBox_Ant3Sensor03Set->setChecked(false);
+    ui->checkBox_Ant3Sensor04Set->setChecked(false);
+    ui->checkBox_Ant3Sensor05Set->setChecked(false);
+    ui->checkBox_Ant3Sensor06Set->setChecked(false);
+    ui->checkBox_Ant3Sensor07Set->setChecked(false);
+    ui->checkBox_Ant3Sensor08Set->setChecked(false);
+    ui->checkBox_Ant3Sensor09Set->setChecked(false);
+    ui->checkBox_Ant3Sensor10Set->setChecked(false);
+    ui->checkBox_Ant3Sensor11Set->setChecked(false);
+    ui->checkBox_Ant3Sensor12Set->setChecked(false);
+    ui->comboBox_Ant3Sensor01RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor02RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor03RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor04RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor05RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor06RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor07RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor08RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor09RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor10RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor11RF->setCurrentIndex(0);
+    ui->comboBox_Ant3Sensor12RF->setCurrentIndex(0);
+    ui->checkBox_Ant4Sensor01Set->setChecked(false);
+    ui->checkBox_Ant4Sensor02Set->setChecked(false);
+    ui->checkBox_Ant4Sensor03Set->setChecked(false);
+    ui->checkBox_Ant4Sensor04Set->setChecked(false);
+    ui->checkBox_Ant4Sensor05Set->setChecked(false);
+    ui->checkBox_Ant4Sensor06Set->setChecked(false);
+    ui->checkBox_Ant4Sensor07Set->setChecked(false);
+    ui->checkBox_Ant4Sensor08Set->setChecked(false);
+    ui->checkBox_Ant4Sensor09Set->setChecked(false);
+    ui->checkBox_Ant4Sensor10Set->setChecked(false);
+    ui->checkBox_Ant4Sensor11Set->setChecked(false);
+    ui->checkBox_Ant4Sensor12Set->setChecked(false);
+    ui->comboBox_Ant4Sensor01RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor02RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor03RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor04RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor05RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor06RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor07RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor08RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor09RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor10RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor11RF->setCurrentIndex(0);
+    ui->comboBox_Ant4Sensor12RF->setCurrentIndex(0);
+    StatusSensor1_1="0";
+    StatusSensor1_2="0";
+    StatusSensor1_3="0";
+    StatusSensor1_4="0";
+    StatusSensor1_5="0";
+    StatusSensor1_6="0";
+    StatusSensor1_7="0";
+    StatusSensor1_8="0";
+    StatusSensor1_9="0";
+    StatusSensor1_10="0";
+    StatusSensor1_11="0";
+    StatusSensor1_12="0";
+    StatusSensor2_1="0";
+    StatusSensor2_2="0";
+    StatusSensor2_3="0";
+    StatusSensor2_4="0";
+    StatusSensor2_5="0";
+    StatusSensor2_6="0";
+    StatusSensor2_7="0";
+    StatusSensor2_8="0";
+    StatusSensor2_9="0";
+    StatusSensor2_10="0";
+    StatusSensor2_11="0";
+    StatusSensor2_12="0";
+    StatusSensor3_1="0";
+    StatusSensor3_2="0";
+    StatusSensor3_3="0";
+    StatusSensor3_4="0";
+    StatusSensor3_5="0";
+    StatusSensor3_6="0";
+    StatusSensor3_7="0";
+    StatusSensor3_8="0";
+    StatusSensor3_9="0";
+    StatusSensor3_10="0";
+    StatusSensor3_11="0";
+    StatusSensor3_12="0";
+    StatusSensor4_1="0";
+    StatusSensor4_2="0";
+    StatusSensor4_3="0";
+    StatusSensor4_4="0";
+    StatusSensor4_5="0";
+    StatusSensor4_6="0";
+    StatusSensor4_7="0";
+    StatusSensor4_8="0";
+    StatusSensor4_9="0";
+    StatusSensor4_10="0";
+    StatusSensor4_11="0";
+    StatusSensor4_12="0";
 }

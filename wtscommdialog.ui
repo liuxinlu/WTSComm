@@ -19210,6 +19210,13 @@
         </item>
        </layout>
       </item>
+      <item row="0" column="0">
+       <widget class="QPushButton" name="pushButton_ClearAll">
+        <property name="text">
+         <string>刷新</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </widget>

@@ -29,17 +29,18 @@ public:
     ~WTSCommDialog();
 
 public:
+    QByteArray BufferData;
+    QByteArray PasteData;
+    QByteArray ReadData;
     int iRecvPackageCount;//接收包技术
     int iSendPackageCount;//发送包计数
 
     int ReceiveDataCount;//
-    int StatusForRecv;//数据接收状态机
-    int DebugStopFlagStatus;//调试模式下记录是否接收到调试数据，状态机
 
     int iSensorSet[4][12];//
     int iRFSetData[4][12];//
     int iRFReadData[4][12];//
-    QString  receiveMsg;//
+
     unsigned int Power_Data;
     unsigned int Freq_Data;
     float Temper_Data;
@@ -306,6 +307,10 @@ private slots:
     void on_pushButton_CalTemp_clicked();
 
     void on_pushButton_ImportParmFile_clicked();
+
+    void on_pushButton_ClearAll_clicked();
+
+    void on_comboBox_ReaderID_currentIndexChanged(int index);
 
 private:
     Ui::WTSCommDialog *ui;
