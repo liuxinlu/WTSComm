@@ -18,3 +18,12 @@ SOURCES += main.cpp\
 HEADERS  += wtscommdialog.h
 
 FORMS    += wtscommdialog.ui
+QT       += serialport
+
+RESOURCES += \
+    wtscomm.qrc
+
+DISTFILES += \
+    deskicon.rc
+RC_FILE = \
+  deskicon.rc
