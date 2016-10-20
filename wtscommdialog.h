@@ -37,9 +37,10 @@ public:
 
     int ReceiveDataCount;//
 
-    int iSensorSet[4][12];//
-    int iRFSetData[4][12];//
-    int iRFReadData[4][12];//
+    int iSensorSet[4][12];//保存设定的传感器使能数据
+    int iSensorRead[4][12];//保存读取到的存储的传感器使能数据
+    int iRFSetData[4][12];//保存设定的衰减量
+    int iRFReadData[4][12];//保存读取到的存储的衰减量
 
     unsigned int Power_Data;
     unsigned int Freq_Data;
@@ -60,6 +61,11 @@ public:
 
     bool singleShotFlag;//true is can be start ,false is stop timer
 
+    bool bRecvReaderStatusFlag;//true is recv a status package, false is recv nothing
+
+    bool bSendStopCMDRequest;//发送停止命令的请求,true is a request,false is no request
+
+    bool bSendStopCMDRequestTimeout;//发送停止命令的请求超时，true是定时器开始，false是定时器中断停止
     QString StatusSensor1_1;
     QString StatusSensor1_2;
     QString StatusSensor1_3;
@@ -148,6 +154,10 @@ public:
     void sleep(unsigned int msec);
 
 private slots:
+    void SendStopCMDTimeout();
+
+    void CheckReaderStatusTimeOut();
+
     void SetRF();
 
     void SetAnt1ForSensorSelect();
