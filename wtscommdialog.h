@@ -154,6 +154,8 @@ public:
     void sleep(unsigned int msec);
 
 private slots:
+    void SendStopCMD();
+
     void SendStopCMDTimeout();
 
     void CheckReaderStatusTimeOut();
@@ -321,6 +323,8 @@ private slots:
     void on_pushButton_ClearAll_clicked();
 
     void on_comboBox_ReaderID_currentIndexChanged(int index);
+
+    void on_tabWidget_currentChanged(int index);
 
 private:
     Ui::WTSCommDialog *ui;

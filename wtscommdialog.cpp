@@ -29,6 +29,12 @@ WTSCommDialog::WTSCommDialog(QWidget *parent) :
     ui->pushButton_CloseComm->setEnabled(false);
     ui->comboBox_CommBaud->setCurrentIndex(2);//默认19200
     InitMainDlgItem();
+    ui->tab_2->setEnabled(false);
+    ui->pushButton_CalTemp->setEnabled(false);
+    ui->pushButton_CheckReaderCommunicate->setEnabled(false);
+    ui->pushButton_DebugCMD->setEnabled(false);
+    ui->pushButton_StartGetTemp->setEnabled(false);
+
     update();
     QPixmap pixmap(":/image/image/diconnect.png");
     QPixmap fitpixmap=pixmap.scaled(ui->label_ReaderStatus->width(), ui->label_ReaderStatus->height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
@@ -254,7 +260,7 @@ void WTSCommDialog::InitSystemParm()
 
     singleShotFlag=true;//true is can be start ,false is stop timer
 
-    ui->lineEdit_ParmFileName->setText("Config"+QDateTime::currentDateTime().toString("yyyy-MM-dd"));
+    ui->lineEdit_ParmFileName->setText("Reader1Config"+QDateTime::currentDateTime().toString("yyyy-MM-dd"));
 
     StatusSensor1_1="0";
     StatusSensor1_2="0";
@@ -812,7 +818,7 @@ void WTSCommDialog::WTS_ReadUart()
                     {
                         bSendStopCMDRequest=false;
                         bSendStopCMDRequestTimeout=false;
-                        SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"54");//stop
+                        QTimer::singleShot(20, this, SLOT(SendStopCMD()));
                     }
                     bool ok;
                     if(rxdata[11]=='.')
@@ -890,6 +896,11 @@ void WTSCommDialog::WTS_ReadUart()
         ReadData = PasteData;
         PasteData.clear();
     }
+}
+
+void WTSCommDialog::SendStopCMD()
+{
+    SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"54");//stop
 }
 
 void WTSCommDialog::Ant1DataFix(unsigned char SensorID,float GetTemperData,int GetFreqData,int GetPowerData)
@@ -1849,6 +1860,10 @@ void WTSCommDialog::on_pushButton_OpenComm_clicked()
         iSendPackageCount=0;
         ui->label_RecvPackage->setText("接收包："+QString::number(iRecvPackageCount,10));
         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
+
+        ui->tab_2->setEnabled(true);
+        ui->pushButton_CheckReaderCommunicate->setEnabled(true);
+        ui->pushButton_DebugCMD->setEnabled(true);
      } else {
          QMessageBox::critical(this, tr("Open error"), WTS_SerialPort->errorString());
      }
@@ -1865,6 +1880,12 @@ void WTSCommDialog::on_pushButton_CloseComm_clicked()
         ui->pushButton_CloseComm->setEnabled(false);
         ui->comboBox_CommBaud->setEnabled(true);
         ui->comboBox_CommPort->setEnabled(true);
+
+        ui->tab_2->setEnabled(false);
+        ui->pushButton_CalTemp->setEnabled(false);
+        ui->pushButton_CheckReaderCommunicate->setEnabled(false);
+        ui->pushButton_DebugCMD->setEnabled(false);
+        ui->pushButton_StartGetTemp->setEnabled(false);
     }
 }
 
@@ -2135,12 +2156,17 @@ void WTSCommDialog::on_pushButton_DebugCMD_clicked()
         ui->pushButton_DebugCMD->setText("停止");
         QTimer::singleShot(500, this, SLOT(ScanAnt1ForSensor()));
         singleShotFlag=true;
+        ui->pushButton_DebugCMD->setEnabled(false);
+        ui->tab_2->setEnabled(false);
     }else
     {
         FlagForDebugButton=true;
         ui->pushButton_DebugCMD->setText("开始");
         singleShotFlag=false;
         if(ui->checkBox_SaveParmFile->isChecked()==true) SaveParmToFile(ui->lineEdit_ParmFileName->text());
+        ui->tab_2->setEnabled(true);
+        ui->pushButton_CalTemp->setEnabled(false);
+        ui->pushButton_StartGetTemp->setEnabled(false);
     }
 }
 
@@ -2196,8 +2222,8 @@ void WTSCommDialog::ScanAnt3ForRF()
 void WTSCommDialog::ScanAnt4ForRF()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"65","3");
-//    FlagForDebugButton=true;
-//    ui->pushButton_DebugCMD->setText("开始");
+    ui->pushButton_DebugCMD->setEnabled(true);
+    ui->pushButton_StartGetTemp->setEnabled(true);
     singleShotFlag=false;
 }
 
@@ -2222,13 +2248,16 @@ void WTSCommDialog::on_pushButton_StartGetTemp_clicked()
         }
         ui->pushButton_StartGetTemp->setText("停止测温");
         QTimer::singleShot(250, this, SLOT(SetAnt1ForSensorSelect()));
+        ui->pushButton_StartGetTemp->setEnabled(false);
+        ui->pushButton_CalTemp->setEnabled(false);
     }else
     {
         FlagForGetTempButton=true;
         ui->pushButton_StartGetTemp->setText("开始测温");
         bSendStopCMDRequest=true;
         bSendStopCMDRequestTimeout=true;
-        QTimer::singleShot(1500, this, SLOT(SendStopCMDTimeout()));
+        ui->pushButton_CalTemp->setEnabled(true);
+        QTimer::singleShot(2000, this, SLOT(SendStopCMDTimeout()));
     }
 }
 
@@ -2237,6 +2266,7 @@ void WTSCommDialog::SendStopCMDTimeout()
     if(bSendStopCMDRequestTimeout)
     {
         bSendStopCMDRequestTimeout=false;
+        bSendStopCMDRequest=false;
         SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"54");//stop
         QMessageBox::critical(this,"注意",tr("停止命令发送超时，读取器已停止或通讯中断！"));
     }
@@ -2607,10 +2637,10 @@ void WTSCommDialog::SetRF()
                     iRFReadData[i][j]=iRFSetData[i][j];
                     if(iRFSetData[i][j]<10)
                     {
-                        strCMD=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"51"+QString::number(i, 16).toUpper()+"0"+QString::number(iRFSetData[i][j], 10)+QString::number(j, 16).toUpper()+"<>";
+                        strCMD=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"51"+QString::number(i, 16).toLower()+"0"+QString::number(iRFSetData[i][j], 10)+QString::number(j, 16).toLower()+"<>";
                     }else
                     {
-                        strCMD=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"51"+QString::number(i, 16).toUpper()+QString::number(iRFSetData[i][j], 10)+QString::number(j, 16).toUpper()+"<>";
+                        strCMD=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"51"+QString::number(i, 16).toLower()+QString::number(iRFSetData[i][j], 10)+QString::number(j, 16).toLower()+"<>";
                     }
                     strCMD=":"+strCMD+LRC_Calculate(strCMD).left(2)+"\r\n";
                     WTS_SerialPort->write(strCMD.toLatin1());
@@ -2623,6 +2653,7 @@ void WTSCommDialog::SetRF()
     }
     //发送开始测温命令
     SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"52");//start
+    ui->pushButton_StartGetTemp->setEnabled(true);
 }
 
 void WTSCommDialog::on_checkBox_Ant1Sensor01Set_clicked()
@@ -3708,6 +3739,9 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
     {
         if (ui->lineEdit_CalTemp->text().length()==4)
         {
+            ui->pushButton_DebugCMD->setEnabled(false);
+            ui->pushButton_StartGetTemp->setEnabled(false);
+
             for (int i = 0; i < 4; i++)
             {
                 for (int j = 0; j < 12; j++)
@@ -3742,6 +3776,8 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
                 }
             }
             QMessageBox::critical(this,"注意",tr("批量校准操作完成！"));
+            ui->pushButton_DebugCMD->setEnabled(true);
+            ui->pushButton_StartGetTemp->setEnabled(true);
         }
         else
         {
@@ -3768,7 +3804,118 @@ void WTSCommDialog::on_pushButton_ImportParmFile_clicked()
 
 void WTSCommDialog::SaveParmToFile(QString FileName)
 {
-    QFile file(FileName+".txt");
+    bool ok;
+    iRFSetData[0][0]=ui->comboBox_Ant1Sensor01RF->currentText().toInt(&ok,10);
+    iRFSetData[0][1]=ui->comboBox_Ant1Sensor02RF->currentText().toInt(&ok,10);
+    iRFSetData[0][2]=ui->comboBox_Ant1Sensor03RF->currentText().toInt(&ok,10);
+    iRFSetData[0][3]=ui->comboBox_Ant1Sensor04RF->currentText().toInt(&ok,10);
+    iRFSetData[0][4]=ui->comboBox_Ant1Sensor05RF->currentText().toInt(&ok,10);
+    iRFSetData[0][5]=ui->comboBox_Ant1Sensor06RF->currentText().toInt(&ok,10);
+    iRFSetData[0][6]=ui->comboBox_Ant1Sensor07RF->currentText().toInt(&ok,10);
+    iRFSetData[0][7]=ui->comboBox_Ant1Sensor08RF->currentText().toInt(&ok,10);
+    iRFSetData[0][8]=ui->comboBox_Ant1Sensor09RF->currentText().toInt(&ok,10);
+    iRFSetData[0][9]=ui->comboBox_Ant1Sensor10RF->currentText().toInt(&ok,10);
+    iRFSetData[0][10]=ui->comboBox_Ant1Sensor11RF->currentText().toInt(&ok,10);
+    iRFSetData[0][11]=ui->comboBox_Ant1Sensor12RF->currentText().toInt(&ok,10);
+    iRFSetData[1][0]=ui->comboBox_Ant2Sensor01RF->currentText().toInt(&ok,10);
+    iRFSetData[1][1]=ui->comboBox_Ant2Sensor02RF->currentText().toInt(&ok,10);
+    iRFSetData[1][2]=ui->comboBox_Ant2Sensor03RF->currentText().toInt(&ok,10);
+    iRFSetData[1][3]=ui->comboBox_Ant2Sensor04RF->currentText().toInt(&ok,10);
+    iRFSetData[1][4]=ui->comboBox_Ant2Sensor05RF->currentText().toInt(&ok,10);
+    iRFSetData[1][5]=ui->comboBox_Ant2Sensor06RF->currentText().toInt(&ok,10);
+    iRFSetData[1][6]=ui->comboBox_Ant2Sensor07RF->currentText().toInt(&ok,10);
+    iRFSetData[1][7]=ui->comboBox_Ant2Sensor08RF->currentText().toInt(&ok,10);
+    iRFSetData[1][8]=ui->comboBox_Ant2Sensor09RF->currentText().toInt(&ok,10);
+    iRFSetData[1][9]=ui->comboBox_Ant2Sensor10RF->currentText().toInt(&ok,10);
+    iRFSetData[1][10]=ui->comboBox_Ant2Sensor11RF->currentText().toInt(&ok,10);
+    iRFSetData[1][11]=ui->comboBox_Ant2Sensor12RF->currentText().toInt(&ok,10);
+    iRFSetData[2][0]=ui->comboBox_Ant3Sensor01RF->currentText().toInt(&ok,10);
+    iRFSetData[2][1]=ui->comboBox_Ant3Sensor02RF->currentText().toInt(&ok,10);
+    iRFSetData[2][2]=ui->comboBox_Ant3Sensor03RF->currentText().toInt(&ok,10);
+    iRFSetData[2][3]=ui->comboBox_Ant3Sensor04RF->currentText().toInt(&ok,10);
+    iRFSetData[2][4]=ui->comboBox_Ant3Sensor05RF->currentText().toInt(&ok,10);
+    iRFSetData[2][5]=ui->comboBox_Ant3Sensor06RF->currentText().toInt(&ok,10);
+    iRFSetData[2][6]=ui->comboBox_Ant3Sensor07RF->currentText().toInt(&ok,10);
+    iRFSetData[2][7]=ui->comboBox_Ant3Sensor08RF->currentText().toInt(&ok,10);
+    iRFSetData[2][8]=ui->comboBox_Ant3Sensor09RF->currentText().toInt(&ok,10);
+    iRFSetData[2][9]=ui->comboBox_Ant3Sensor10RF->currentText().toInt(&ok,10);
+    iRFSetData[2][10]=ui->comboBox_Ant3Sensor11RF->currentText().toInt(&ok,10);
+    iRFSetData[2][11]=ui->comboBox_Ant3Sensor12RF->currentText().toInt(&ok,10);
+    iRFSetData[3][0]=ui->comboBox_Ant4Sensor01RF->currentText().toInt(&ok,10);
+    iRFSetData[3][1]=ui->comboBox_Ant4Sensor02RF->currentText().toInt(&ok,10);
+    iRFSetData[3][2]=ui->comboBox_Ant4Sensor03RF->currentText().toInt(&ok,10);
+    iRFSetData[3][3]=ui->comboBox_Ant4Sensor04RF->currentText().toInt(&ok,10);
+    iRFSetData[3][4]=ui->comboBox_Ant4Sensor05RF->currentText().toInt(&ok,10);
+    iRFSetData[3][5]=ui->comboBox_Ant4Sensor06RF->currentText().toInt(&ok,10);
+    iRFSetData[3][6]=ui->comboBox_Ant4Sensor07RF->currentText().toInt(&ok,10);
+    iRFSetData[3][7]=ui->comboBox_Ant4Sensor08RF->currentText().toInt(&ok,10);
+    iRFSetData[3][8]=ui->comboBox_Ant4Sensor09RF->currentText().toInt(&ok,10);
+    iRFSetData[3][9]=ui->comboBox_Ant4Sensor10RF->currentText().toInt(&ok,10);
+    iRFSetData[3][10]=ui->comboBox_Ant4Sensor11RF->currentText().toInt(&ok,10);
+    iRFSetData[3][11]=ui->comboBox_Ant4Sensor12RF->currentText().toInt(&ok,10);
+
+    on_checkBox_Ant1Sensor01Set_clicked();
+    on_checkBox_Ant1Sensor02Set_clicked();
+    on_checkBox_Ant1Sensor03Set_clicked();
+    on_checkBox_Ant1Sensor04Set_clicked();
+    on_checkBox_Ant1Sensor05Set_clicked();
+    on_checkBox_Ant1Sensor06Set_clicked();
+    on_checkBox_Ant1Sensor07Set_clicked();
+    on_checkBox_Ant1Sensor08Set_clicked();
+    on_checkBox_Ant1Sensor09Set_clicked();
+    on_checkBox_Ant1Sensor10Set_clicked();
+    on_checkBox_Ant1Sensor11Set_clicked();
+    on_checkBox_Ant1Sensor12Set_clicked();
+    on_checkBox_Ant2Sensor01Set_clicked();
+    on_checkBox_Ant2Sensor02Set_clicked();
+    on_checkBox_Ant2Sensor03Set_clicked();
+    on_checkBox_Ant2Sensor04Set_clicked();
+    on_checkBox_Ant2Sensor05Set_clicked();
+    on_checkBox_Ant2Sensor06Set_clicked();
+    on_checkBox_Ant2Sensor07Set_clicked();
+    on_checkBox_Ant2Sensor08Set_clicked();
+    on_checkBox_Ant2Sensor09Set_clicked();
+    on_checkBox_Ant2Sensor10Set_clicked();
+    on_checkBox_Ant2Sensor11Set_clicked();
+    on_checkBox_Ant3Sensor12Set_clicked();
+    on_checkBox_Ant3Sensor01Set_clicked();
+    on_checkBox_Ant3Sensor02Set_clicked();
+    on_checkBox_Ant3Sensor03Set_clicked();
+    on_checkBox_Ant3Sensor04Set_clicked();
+    on_checkBox_Ant3Sensor05Set_clicked();
+    on_checkBox_Ant3Sensor06Set_clicked();
+    on_checkBox_Ant3Sensor07Set_clicked();
+    on_checkBox_Ant3Sensor08Set_clicked();
+    on_checkBox_Ant3Sensor09Set_clicked();
+    on_checkBox_Ant3Sensor10Set_clicked();
+    on_checkBox_Ant3Sensor11Set_clicked();
+    on_checkBox_Ant3Sensor12Set_clicked();
+    on_checkBox_Ant4Sensor01Set_clicked();
+    on_checkBox_Ant4Sensor02Set_clicked();
+    on_checkBox_Ant4Sensor03Set_clicked();
+    on_checkBox_Ant4Sensor04Set_clicked();
+    on_checkBox_Ant4Sensor05Set_clicked();
+    on_checkBox_Ant4Sensor06Set_clicked();
+    on_checkBox_Ant4Sensor07Set_clicked();
+    on_checkBox_Ant4Sensor08Set_clicked();
+    on_checkBox_Ant4Sensor09Set_clicked();
+    on_checkBox_Ant4Sensor10Set_clicked();
+    on_checkBox_Ant4Sensor11Set_clicked();
+    on_checkBox_Ant4Sensor12Set_clicked();
+
+
+    QDir *temp = new QDir;
+    bool exist = temp->exists("C://WTS_CFGFile");
+    if(exist)
+        qDebug()<<"文件夹已经存在！";
+    else
+    {
+        bool ok = temp->mkdir("C://WTS_CFGFile");
+        if( ok )
+            qDebug()<<"文件夹创建成功！";
+    }
+
+    QFile file("C://WTS_CFGFile//"+FileName+".txt");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return;
 
@@ -3966,54 +4113,54 @@ bool WTSCommDialog::ReadParmFromFile(QString FileName)
         iRFSetData[3][9]=line.mid(90,2).toInt();
         iRFSetData[3][10]=line.mid(92,2).toInt();
         iRFSetData[3][11]=line.mid(94,2).toInt();
-        ui->comboBox_Ant1Sensor01RF->setCurrentIndex(iRFSetData[0][0]);
-        ui->comboBox_Ant1Sensor02RF->setCurrentIndex(iRFSetData[0][1]);
-        ui->comboBox_Ant1Sensor03RF->setCurrentIndex(iRFSetData[0][2]);
-        ui->comboBox_Ant1Sensor04RF->setCurrentIndex(iRFSetData[0][3]);
-        ui->comboBox_Ant1Sensor05RF->setCurrentIndex(iRFSetData[0][4]);
-        ui->comboBox_Ant1Sensor06RF->setCurrentIndex(iRFSetData[0][5]);
-        ui->comboBox_Ant1Sensor07RF->setCurrentIndex(iRFSetData[0][6]);
-        ui->comboBox_Ant1Sensor08RF->setCurrentIndex(iRFSetData[0][7]);
-        ui->comboBox_Ant1Sensor09RF->setCurrentIndex(iRFSetData[0][8]);
-        ui->comboBox_Ant1Sensor10RF->setCurrentIndex(iRFSetData[0][9]);
-        ui->comboBox_Ant1Sensor11RF->setCurrentIndex(iRFSetData[0][10]);
-        ui->comboBox_Ant1Sensor12RF->setCurrentIndex(iRFSetData[0][11]);
-        ui->comboBox_Ant2Sensor01RF->setCurrentIndex(iRFSetData[1][0]);
-        ui->comboBox_Ant2Sensor02RF->setCurrentIndex(iRFSetData[1][1]);
-        ui->comboBox_Ant2Sensor03RF->setCurrentIndex(iRFSetData[1][2]);
-        ui->comboBox_Ant2Sensor04RF->setCurrentIndex(iRFSetData[1][3]);
-        ui->comboBox_Ant2Sensor05RF->setCurrentIndex(iRFSetData[1][4]);
-        ui->comboBox_Ant2Sensor06RF->setCurrentIndex(iRFSetData[1][5]);
-        ui->comboBox_Ant2Sensor07RF->setCurrentIndex(iRFSetData[1][6]);
-        ui->comboBox_Ant2Sensor08RF->setCurrentIndex(iRFSetData[1][7]);
-        ui->comboBox_Ant2Sensor09RF->setCurrentIndex(iRFSetData[1][8]);
-        ui->comboBox_Ant2Sensor10RF->setCurrentIndex(iRFSetData[1][9]);
-        ui->comboBox_Ant2Sensor11RF->setCurrentIndex(iRFSetData[1][10]);
-        ui->comboBox_Ant2Sensor12RF->setCurrentIndex(iRFSetData[1][11]);
-        ui->comboBox_Ant3Sensor01RF->setCurrentIndex(iRFSetData[2][0]);
-        ui->comboBox_Ant3Sensor02RF->setCurrentIndex(iRFSetData[2][1]);
-        ui->comboBox_Ant3Sensor03RF->setCurrentIndex(iRFSetData[2][2]);
-        ui->comboBox_Ant3Sensor04RF->setCurrentIndex(iRFSetData[2][3]);
-        ui->comboBox_Ant3Sensor05RF->setCurrentIndex(iRFSetData[2][4]);
-        ui->comboBox_Ant3Sensor06RF->setCurrentIndex(iRFSetData[2][5]);
-        ui->comboBox_Ant3Sensor07RF->setCurrentIndex(iRFSetData[2][6]);
-        ui->comboBox_Ant3Sensor08RF->setCurrentIndex(iRFSetData[2][7]);
-        ui->comboBox_Ant3Sensor09RF->setCurrentIndex(iRFSetData[2][8]);
-        ui->comboBox_Ant3Sensor10RF->setCurrentIndex(iRFSetData[2][9]);
-        ui->comboBox_Ant3Sensor11RF->setCurrentIndex(iRFSetData[2][10]);
-        ui->comboBox_Ant3Sensor12RF->setCurrentIndex(iRFSetData[2][11]);
-        ui->comboBox_Ant4Sensor01RF->setCurrentIndex(iRFSetData[3][0]);
-        ui->comboBox_Ant4Sensor02RF->setCurrentIndex(iRFSetData[3][1]);
-        ui->comboBox_Ant4Sensor03RF->setCurrentIndex(iRFSetData[3][2]);
-        ui->comboBox_Ant4Sensor04RF->setCurrentIndex(iRFSetData[3][3]);
-        ui->comboBox_Ant4Sensor05RF->setCurrentIndex(iRFSetData[3][4]);
-        ui->comboBox_Ant4Sensor06RF->setCurrentIndex(iRFSetData[3][5]);
-        ui->comboBox_Ant4Sensor07RF->setCurrentIndex(iRFSetData[3][6]);
-        ui->comboBox_Ant4Sensor08RF->setCurrentIndex(iRFSetData[3][7]);
-        ui->comboBox_Ant4Sensor09RF->setCurrentIndex(iRFSetData[3][8]);
-        ui->comboBox_Ant4Sensor10RF->setCurrentIndex(iRFSetData[3][9]);
-        ui->comboBox_Ant4Sensor11RF->setCurrentIndex(iRFSetData[3][10]);
-        ui->comboBox_Ant4Sensor12RF->setCurrentIndex(iRFSetData[3][11]);
+        ui->comboBox_Ant1Sensor01RF->setCurrentText(QString::number(iRFSetData[0][0],10));
+        ui->comboBox_Ant1Sensor02RF->setCurrentText(QString::number(iRFSetData[0][1],10));
+        ui->comboBox_Ant1Sensor03RF->setCurrentText(QString::number(iRFSetData[0][2],10));
+        ui->comboBox_Ant1Sensor04RF->setCurrentText(QString::number(iRFSetData[0][3],10));
+        ui->comboBox_Ant1Sensor05RF->setCurrentText(QString::number(iRFSetData[0][4],10));
+        ui->comboBox_Ant1Sensor06RF->setCurrentText(QString::number(iRFSetData[0][5],10));
+        ui->comboBox_Ant1Sensor07RF->setCurrentText(QString::number(iRFSetData[0][6],10));
+        ui->comboBox_Ant1Sensor08RF->setCurrentText(QString::number(iRFSetData[0][7],10));
+        ui->comboBox_Ant1Sensor09RF->setCurrentText(QString::number(iRFSetData[0][8],10));
+        ui->comboBox_Ant1Sensor10RF->setCurrentText(QString::number(iRFSetData[0][9],10));
+        ui->comboBox_Ant1Sensor11RF->setCurrentText(QString::number(iRFSetData[0][10],10));
+        ui->comboBox_Ant1Sensor12RF->setCurrentText(QString::number(iRFSetData[0][11],10));
+        ui->comboBox_Ant2Sensor01RF->setCurrentText(QString::number(iRFSetData[1][0],10));
+        ui->comboBox_Ant2Sensor02RF->setCurrentText(QString::number(iRFSetData[1][1],10));
+        ui->comboBox_Ant2Sensor03RF->setCurrentText(QString::number(iRFSetData[1][2],10));
+        ui->comboBox_Ant2Sensor04RF->setCurrentText(QString::number(iRFSetData[1][3],10));
+        ui->comboBox_Ant2Sensor05RF->setCurrentText(QString::number(iRFSetData[1][4],10));
+        ui->comboBox_Ant2Sensor06RF->setCurrentText(QString::number(iRFSetData[1][5],10));
+        ui->comboBox_Ant2Sensor07RF->setCurrentText(QString::number(iRFSetData[1][6],10));
+        ui->comboBox_Ant2Sensor08RF->setCurrentText(QString::number(iRFSetData[1][7],10));
+        ui->comboBox_Ant2Sensor09RF->setCurrentText(QString::number(iRFSetData[1][8],10));
+        ui->comboBox_Ant2Sensor10RF->setCurrentText(QString::number(iRFSetData[1][9],10));
+        ui->comboBox_Ant2Sensor11RF->setCurrentText(QString::number(iRFSetData[1][10],10));
+        ui->comboBox_Ant2Sensor12RF->setCurrentText(QString::number(iRFSetData[1][11],10));
+        ui->comboBox_Ant3Sensor01RF->setCurrentText(QString::number(iRFSetData[2][0],10));
+        ui->comboBox_Ant3Sensor02RF->setCurrentText(QString::number(iRFSetData[2][1],10));
+        ui->comboBox_Ant3Sensor03RF->setCurrentText(QString::number(iRFSetData[2][2],10));
+        ui->comboBox_Ant3Sensor04RF->setCurrentText(QString::number(iRFSetData[2][3],10));
+        ui->comboBox_Ant3Sensor05RF->setCurrentText(QString::number(iRFSetData[2][4],10));
+        ui->comboBox_Ant3Sensor06RF->setCurrentText(QString::number(iRFSetData[2][5],10));
+        ui->comboBox_Ant3Sensor07RF->setCurrentText(QString::number(iRFSetData[2][6],10));
+        ui->comboBox_Ant3Sensor08RF->setCurrentText(QString::number(iRFSetData[2][7],10));
+        ui->comboBox_Ant3Sensor09RF->setCurrentText(QString::number(iRFSetData[2][8],10));
+        ui->comboBox_Ant3Sensor10RF->setCurrentText(QString::number(iRFSetData[2][9],10));
+        ui->comboBox_Ant3Sensor11RF->setCurrentText(QString::number(iRFSetData[2][10],10));
+        ui->comboBox_Ant3Sensor12RF->setCurrentText(QString::number(iRFSetData[2][11],10));
+        ui->comboBox_Ant4Sensor01RF->setCurrentText(QString::number(iRFSetData[3][0],10));
+        ui->comboBox_Ant4Sensor02RF->setCurrentText(QString::number(iRFSetData[3][1],10));
+        ui->comboBox_Ant4Sensor03RF->setCurrentText(QString::number(iRFSetData[3][2],10));
+        ui->comboBox_Ant4Sensor04RF->setCurrentText(QString::number(iRFSetData[3][3],10));
+        ui->comboBox_Ant4Sensor05RF->setCurrentText(QString::number(iRFSetData[3][4],10));
+        ui->comboBox_Ant4Sensor06RF->setCurrentText(QString::number(iRFSetData[3][5],10));
+        ui->comboBox_Ant4Sensor07RF->setCurrentText(QString::number(iRFSetData[3][6],10));
+        ui->comboBox_Ant4Sensor08RF->setCurrentText(QString::number(iRFSetData[3][7],10));
+        ui->comboBox_Ant4Sensor09RF->setCurrentText(QString::number(iRFSetData[3][8],10));
+        ui->comboBox_Ant4Sensor10RF->setCurrentText(QString::number(iRFSetData[3][9],10));
+        ui->comboBox_Ant4Sensor11RF->setCurrentText(QString::number(iRFSetData[3][10],10));
+        ui->comboBox_Ant4Sensor12RF->setCurrentText(QString::number(iRFSetData[3][11],10));
     }
     return true;
 }
@@ -4024,16 +4171,24 @@ void WTSCommDialog::on_pushButton_ClearAll_clicked()
     iSendPackageCount=0;
     ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
     iRecvPackageCount=0;
-    ui->label_RecvPackage->setText("发送包："+QString::number(iRecvPackageCount,10));
+    ui->label_RecvPackage->setText("接收包："+QString::number(iRecvPackageCount,10));
 }
 
 void WTSCommDialog::on_comboBox_ReaderID_currentIndexChanged(int index)
 {
+    ui->lineEdit_ParmFileName->setText("Reader"+QString::number(index+1,10)+"Config"+QDateTime::currentDateTime().toString("yyyy-MM-dd"));
+
+    QPixmap pixmapDisconnect(":/image/image/diconnect.png");
+    QPixmap fitpixmapDisconnect=pixmapDisconnect.scaled(ui->label_ReaderStatus->width(), ui->label_ReaderStatus->height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    update();
+    ui->label_ReaderStatus->setPixmap(fitpixmapDisconnect);
+    ui->label_ReaderStatus->show();
+
     InitMainDlgItem();
     iSendPackageCount=0;
     ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
     iRecvPackageCount=0;
-    ui->label_RecvPackage->setText("发送包："+QString::number(iRecvPackageCount,10));
+    ui->label_RecvPackage->setText("接收包："+QString::number(iRecvPackageCount,10));
     for(int i=0;i<4;i++)
     {
         for(int j=0;j<12;j++)
@@ -4188,4 +4343,13 @@ void WTSCommDialog::on_comboBox_ReaderID_currentIndexChanged(int index)
     StatusSensor4_10="0";
     StatusSensor4_11="0";
     StatusSensor4_12="0";
+}
+
+void WTSCommDialog::on_tabWidget_currentChanged(int index)
+{
+    qDebug()<<index;
+    if(index==1)
+    {
+        QMessageBox::critical(this,"注意",tr("非专业人士禁止操作此功能！调试过程中禁止操作此功能！"));
+    }
 }
