@@ -18,10 +18,6 @@ WTSCommDialog::WTSCommDialog(QWidget *parent) :
         if (serial.open(QIODevice::ReadWrite))
         {
             ui->comboBox_CommPort->addItem(info.portName());
-//                ui->textBrowserRecvText->append(tr("检测到端口列表:"));
-//                ui->textBrowserRecvText->append(info.portName());
-//                ui->textBrowserRecvText->append(info.description());
-//                ui->textBrowserRecvText->append(info.manufacturer());
             serial.close();
         }
     }
@@ -188,6 +184,8 @@ WTSCommDialog::WTSCommDialog(QWidget *parent) :
     ui->label_Ant4Sensor12Freq->setFont(QFont("Timers" , size));
     ui->label_Ant4Sensor12Power->setFont(QFont("Timers" , size));
     ui->label_Ant4Sensor12Temp->setFont(QFont("Timers" , size));
+    timerTocheckstop = new QTimer(this);
+    connect(timerTocheckstop, SIGNAL(timeout()), this, SLOT(TimerToCheckStopped()));
 }
 
 WTSCommDialog::~WTSCommDialog()
@@ -816,9 +814,11 @@ void WTSCommDialog::WTS_ReadUart()
                 {
                     if(bSendStopCMDRequest)
                     {
-                        bSendStopCMDRequest=false;
                         bSendStopCMDRequestTimeout=false;
-                        QTimer::singleShot(20, this, SLOT(SendStopCMD()));
+                        QTimer::singleShot(100, this, SLOT(SendStopCMD()));
+                        //再开一个定时器，用于对发送停止命令之后检测手否还会收到数据
+                        timerTocheckstop->stop();
+                        timerTocheckstop->start(5000);
                     }
                     bool ok;
                     if(rxdata[11]=='.')
@@ -898,9 +898,16 @@ void WTSCommDialog::WTS_ReadUart()
     }
 }
 
+void WTSCommDialog::TimerToCheckStopped()
+{
+    timerTocheckstop->stop();
+    bSendStopCMDRequest=false;
+    QMessageBox::critical(this,"操作",tr("读取器已经停止！"));
+}
+
 void WTSCommDialog::SendStopCMD()
 {
-    SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"54");//stop
+    SendCMDByReader(-1,"54");//stop
 }
 
 void WTSCommDialog::Ant1DataFix(unsigned char SensorID,float GetTemperData,int GetFreqData,int GetPowerData)
@@ -2154,19 +2161,23 @@ void WTSCommDialog::on_pushButton_DebugCMD_clicked()
     {
         FlagForDebugButton=false;
         ui->pushButton_DebugCMD->setText("停止");
-        QTimer::singleShot(500, this, SLOT(ScanAnt1ForSensor()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt1ForSensor()));
         singleShotFlag=true;
         ui->pushButton_DebugCMD->setEnabled(false);
         ui->tab_2->setEnabled(false);
+        ui->pushButton_CheckReaderCommunicate->setEnabled(false);
+        ui->comboBox_ReaderID->setEnabled(false);
     }else
     {
         FlagForDebugButton=true;
-        ui->pushButton_DebugCMD->setText("开始");
+        ui->pushButton_DebugCMD->setText("启动");
         singleShotFlag=false;
         if(ui->checkBox_SaveParmFile->isChecked()==true) SaveParmToFile(ui->lineEdit_ParmFileName->text());
         ui->tab_2->setEnabled(true);
         ui->pushButton_CalTemp->setEnabled(false);
         ui->pushButton_StartGetTemp->setEnabled(false);
+        ui->pushButton_CheckReaderCommunicate->setEnabled(true);
+        ui->comboBox_ReaderID->setEnabled(true);
     }
 }
 
@@ -2174,49 +2185,49 @@ void WTSCommDialog::ScanAnt1ForSensor()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"63","0");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt2ForSensor()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt2ForSensor()));
 }
 
 void WTSCommDialog::ScanAnt2ForSensor()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"63","1");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt3ForSensor()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt3ForSensor()));
 }
 
 void WTSCommDialog::ScanAnt3ForSensor()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"63","2");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt4ForSensor()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt4ForSensor()));
 }
 
 void WTSCommDialog::ScanAnt4ForSensor()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"63","3");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt1ForRF()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt1ForRF()));
 }
 
 void WTSCommDialog::ScanAnt1ForRF()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"65","0");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt2ForRF()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt2ForRF()));
 }
 
 void WTSCommDialog::ScanAnt2ForRF()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"65","1");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt3ForRF()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt3ForRF()));
 }
 
 void WTSCommDialog::ScanAnt3ForRF()
 {
     SendCMDByReaderAnt(ui->comboBox_ReaderID->currentIndex(),"65","2");
     if(singleShotFlag)
-        QTimer::singleShot(500, this, SLOT(ScanAnt4ForRF()));
+        QTimer::singleShot(1000, this, SLOT(ScanAnt4ForRF()));
 }
 
 void WTSCommDialog::ScanAnt4ForRF()
@@ -2247,9 +2258,11 @@ void WTSCommDialog::on_pushButton_StartGetTemp_clicked()
             }
         }
         ui->pushButton_StartGetTemp->setText("停止测温");
-        QTimer::singleShot(250, this, SLOT(SetAnt1ForSensorSelect()));
+        QTimer::singleShot(500, this, SLOT(SetAnt1ForSensorSelect()));
         ui->pushButton_StartGetTemp->setEnabled(false);
         ui->pushButton_CalTemp->setEnabled(false);
+        ui->pushButton_DebugCMD->setEnabled(false);
+        on_pushButton_ClearAll_clicked();
     }else
     {
         FlagForGetTempButton=true;
@@ -2257,6 +2270,7 @@ void WTSCommDialog::on_pushButton_StartGetTemp_clicked()
         bSendStopCMDRequest=true;
         bSendStopCMDRequestTimeout=true;
         ui->pushButton_CalTemp->setEnabled(true);
+        ui->pushButton_DebugCMD->setEnabled(true);
         QTimer::singleShot(2000, this, SLOT(SendStopCMDTimeout()));
     }
 }
@@ -2267,7 +2281,7 @@ void WTSCommDialog::SendStopCMDTimeout()
     {
         bSendStopCMDRequestTimeout=false;
         bSendStopCMDRequest=false;
-        SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"54");//stop
+        SendCMDByReader(-1,"54");//stop
         QMessageBox::critical(this,"注意",tr("停止命令发送超时，读取器已停止或通讯中断！"));
     }
 }
@@ -2345,7 +2359,7 @@ void WTSCommDialog::SetAnt1ForSensorSelect()
     }
 
 
-    QTimer::singleShot(250, this, SLOT(SetAnt2ForSensorSelect()));
+    QTimer::singleShot(500, this, SLOT(SetAnt2ForSensorSelect()));
 }
 
 void WTSCommDialog::SetAnt2ForSensorSelect()
@@ -2420,7 +2434,7 @@ void WTSCommDialog::SetAnt2ForSensorSelect()
             QMessageBox::critical(this,"错误",tr("数据发送失败，请先打开通信端口！"));
     }
 
-    QTimer::singleShot(250, this, SLOT(SetAnt3ForSensorSelect()));
+    QTimer::singleShot(500, this, SLOT(SetAnt3ForSensorSelect()));
 }
 
 void WTSCommDialog::SetAnt3ForSensorSelect()
@@ -2495,7 +2509,7 @@ void WTSCommDialog::SetAnt3ForSensorSelect()
             QMessageBox::critical(this,"错误",tr("数据发送失败，请先打开通信端口！"));
     }
 
-    QTimer::singleShot(250, this, SLOT(SetAnt4ForSensorSelect()));
+    QTimer::singleShot(500, this, SLOT(SetAnt4ForSensorSelect()));
 }
 
 void WTSCommDialog::SetAnt4ForSensorSelect()
@@ -2570,7 +2584,7 @@ void WTSCommDialog::SetAnt4ForSensorSelect()
             QMessageBox::critical(this,"错误",tr("数据发送失败，请先打开通信端口！"));
     }
 
-    QTimer::singleShot(250, this, SLOT(SetRF()));
+    QTimer::singleShot(500, this, SLOT(SetRF()));
 }
 
 void WTSCommDialog::SetRF()
@@ -2646,7 +2660,7 @@ void WTSCommDialog::SetRF()
                     WTS_SerialPort->write(strCMD.toLatin1());
                     iSendPackageCount++;
                     ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                    sleep(150);
+                    sleep(500);
                 }
             }
         }
@@ -3330,6 +3344,12 @@ void WTSCommDialog::on_checkBox_Ant4Sensor12Set_clicked()
 
 void WTSCommDialog::on_pushButton_CheckReaderCommunicate_clicked()
 {
+    SendCMDByReader(-1,"54");
+    QTimer::singleShot(1000, this, SLOT(SendStopReaderFirst()));
+}
+
+void WTSCommDialog::SendStopReaderFirst()
+{
     SendCMDByReader(ui->comboBox_ReaderID->currentIndex(),"66");
     bRecvReaderStatusFlag=false;
     QTimer::singleShot(1000, this, SLOT(CheckReaderStatusTimeOut()));
@@ -3408,6 +3428,9 @@ void WTSCommDialog::SendCMDByReader(int nIndexReader,QString CMD)
     QString StartCmd;
     switch (nIndexReader)
     {
+    case -1:
+        StartCmd="00"+CMD+"0000<>";//"@0631<>1"
+        break;
     case 0:
         StartCmd="01"+CMD+"0000<>";//"@0631<>1"
         break;
@@ -3697,6 +3720,7 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
 {
     if(0==ui->comboBox_CalMethod->currentIndex())
     {
+        ui->pushButton_CalTemp->setEnabled(false);
         QString SensorFreq,Ant_Cmd,Tab_Cmd;
         for (int i = 0; i < 4; i++)
         {
@@ -3709,10 +3733,7 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
         }
         Tab_Cmd=QString::number(ui->comboBox_SensorID->currentIndex(),16).toLower();
 
-        if (ui->lineEdit_CalTemp->text().length()!=4)
-        {
-            QMessageBox::critical(this,"错误",tr("请选择正确的传感器，并输入正确的数字格式！（温度为带+-的3位阿拉伯数字）！"));
-        }else
+        if (ui->lineEdit_CalTemp->text().length()==4&&ui->lineEdit_CalTemp->text().toInt()>=-25&&ui->lineEdit_CalTemp->text().toInt()<=125&&(ui->lineEdit_CalTemp->text().left(1)=="+"||ui->lineEdit_CalTemp->text().left(1)=="-")&&isDigitStr(ui->lineEdit_CalTemp->text().right(3)))
         {
             QString FixStr;
             FixStr=Tab_Cmd+SensorFreq+ui->lineEdit_CalTemp->text()+Ant_Cmd+"0";
@@ -3721,23 +3742,28 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
             WTS_SerialPort->write(cmd1.toLatin1());
             iSendPackageCount++;
             ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-            sleep(150);
+            sleep(250);
             QString cmd2=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(6,6);
             cmd2=":"+cmd2+LRC_Calculate(cmd2).left(2)+"\r\n";
             WTS_SerialPort->write(cmd2.toLatin1());
             iSendPackageCount++;
             ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-            sleep(150);
+            sleep(250);
             QString cmd3=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(12,4)+"<>";
             cmd3=":"+cmd3+LRC_Calculate(cmd3).left(2)+"\r\n";
             WTS_SerialPort->write(cmd3.toLatin1());
             iSendPackageCount++;
             ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
             QMessageBox::critical(this,"注意",tr("校准命令发送成功！"));
+        }else
+        {
+            QMessageBox::critical(this,"错误",tr("请选择正确的传感器，并输入正确的数字格式！（温度为带+-的3位阿拉伯数字，输入校准温度范围需在-025~+125之间）！"));
         }
+        ui->pushButton_CalTemp->setEnabled(true);
     }else if(1==ui->comboBox_CalMethod->currentIndex())
     {
-        if (ui->lineEdit_CalTemp->text().length()==4)
+        ui->pushButton_CalTemp->setEnabled(false);
+        if (ui->lineEdit_CalTemp->text().length()==4&&ui->lineEdit_CalTemp->text().toInt()>=-25&&ui->lineEdit_CalTemp->text().toInt()<=125&&(ui->lineEdit_CalTemp->text().left(1)=="+"||ui->lineEdit_CalTemp->text().left(1)=="-")&&isDigitStr(ui->lineEdit_CalTemp->text().right(3)))
         {
             ui->pushButton_DebugCMD->setEnabled(false);
             ui->pushButton_StartGetTemp->setEnabled(false);
@@ -3759,19 +3785,19 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
                         WTS_SerialPort->write(cmd1.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(150);
+                        sleep(250);
                         QString cmd2=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(6,6);
                         cmd2=":"+cmd2+LRC_Calculate(cmd2).left(2)+"\r\n";
                         WTS_SerialPort->write(cmd2.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(150);
+                        sleep(250);
                         QString cmd3=ReaderID_Int2CString(ui->comboBox_ReaderID->currentIndex())+"58"+FixStr.mid(12,4)+"<>";
                         cmd3=":"+cmd3+LRC_Calculate(cmd3).left(2)+"\r\n";
                         WTS_SerialPort->write(cmd3.toLatin1());
                         iSendPackageCount++;
                         ui->label_SendPackage->setText("发送包："+QString::number(iSendPackageCount,10));
-                        sleep(150);
+                        sleep(500);
                     }
                 }
             }
@@ -3781,8 +3807,9 @@ void WTSCommDialog::on_pushButton_CalTemp_clicked()
         }
         else
         {
-            QMessageBox::critical(this,"错误",tr("请选择正确的传感器，并输入正确的数字格式！（温度为带+-的3位阿拉伯数字）！"));
+            QMessageBox::critical(this,"错误",tr("请选择正确的传感器，并输入正确的数字格式！（温度为带+-的3位阿拉伯数字，输入校准温度范围需在-025~+125之间）！"));
         }
+        ui->pushButton_CalTemp->setEnabled(true);
     }
 }
 
@@ -4351,5 +4378,23 @@ void WTSCommDialog::on_tabWidget_currentChanged(int index)
     if(index==1)
     {
         QMessageBox::critical(this,"注意",tr("非专业人士禁止操作此功能！调试过程中禁止操作此功能！"));
+    }
+}
+
+
+bool WTSCommDialog::isDigitStr(QString src)
+{
+    QByteArray ba = src.toLatin1();//QString 转换为 char*
+    const char *s = ba.data();
+
+    while(*s && *s>='0' && *s<='9') s++;
+
+    if (*s)
+    { //不是纯数字
+        return false;
+    }
+    else
+    { //纯数字
+        return true;
     }
 }

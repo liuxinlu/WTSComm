@@ -32,7 +32,7 @@ public:
     QByteArray BufferData;
     QByteArray PasteData;
     QByteArray ReadData;
-    int iRecvPackageCount;//接收包技术
+    int iRecvPackageCount;//接收包计数
     int iSendPackageCount;//发送包计数
 
     int ReceiveDataCount;//
@@ -115,8 +115,11 @@ public:
     QString StatusSensor4_11;
     QString StatusSensor4_12;
 public:
+    QTimer *timerTocheckstop;
     void InitSystemParm(void);//初始化一些系统参数和变量
     void SaveParmToFile(QString FileName);
+
+    bool isDigitStr(QString src);
 
     bool ReadParmFromFile(QString FileName);
 
@@ -154,11 +157,15 @@ public:
     void sleep(unsigned int msec);
 
 private slots:
+    void TimerToCheckStopped();
+
     void SendStopCMD();
 
     void SendStopCMDTimeout();
 
     void CheckReaderStatusTimeOut();
+
+    void SendStopReaderFirst();
 
     void SetRF();
 
